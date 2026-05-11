@@ -8,7 +8,8 @@
     "electron/shared/**/*",
     "src/types/**/*",
     "packages/shared-types/**/*",
-    "packages/core/**/*"
+    "packages/core/**/*",
+    "packages/node-runtime/**/*"
   ],
   "compilerOptions": {
     "composite": true,

@@ -1,0 +1,11 @@
+{
+  "name": "@openchatlab/node-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ChatLab Node.js 运行时适配器：better-sqlite3、文件系统、路径管理",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@openchatlab/core": "workspace:*"
+  }
+}

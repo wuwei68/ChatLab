@@ -57,6 +57,11 @@ export interface DatabaseAdapter {
   transaction<T>(fn: () => T): T
 
   /**
+   * 执行 PRAGMA 命令
+   */
+  pragma(pragma: string): unknown
+
+  /**
    * 关闭数据库连接
    */
   close(): void
