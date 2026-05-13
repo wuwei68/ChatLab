@@ -12,7 +12,7 @@
  * 注意：此格式与 WeFlow 格式共享解析逻辑，区别在于签名检测
  */
 
-import { KNOWN_PLATFORMS } from '../../../../src/types/base'
+import { KNOWN_PLATFORMS } from '@openchatlab/shared-types'
 import type { FormatFeature, FormatModule, Parser } from '../types'
 import { parseWeFlow } from './weflow'
 import { weflowPreprocessor } from './weflow-preprocessor'

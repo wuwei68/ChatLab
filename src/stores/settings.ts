@@ -7,6 +7,7 @@ import 'dayjs/locale/en'
 import 'dayjs/locale/ja'
 import { type LocaleType, setLocale as setI18nLocale, getLocale, getDayjsLocale } from '@/i18n'
 import type { PreprocessConfig } from '@electron/preload/index'
+import { IS_ELECTRON } from '@/utils/platform'
 
 const LOCALE_SET_KEY = 'chatlab_locale_set_by_user'
 
@@ -39,6 +40,7 @@ export const useSettingsStore = defineStore(
      * 确保脱敏规则已初始化（首次使用或升级时通过 IPC 从主进程获取）
      */
     async function ensureDesensitizeRules() {
+      if (!IS_ELECTRON) return
       if (aiPreprocessConfig.value.desensitizeRules.length === 0) {
         aiPreprocessConfig.value.desensitizeRules = await window.aiApi.getDefaultDesensitizeRules(locale.value)
       }
@@ -58,9 +60,11 @@ export const useSettingsStore = defineStore(
 
       window.electron?.ipcRenderer.send('locale:change', newLocale)
 
-      // Vue 响应式 Proxy 无法通过 Electron IPC structured clone，需转为普通对象
-      const plainRules = JSON.parse(JSON.stringify(aiPreprocessConfig.value.desensitizeRules))
-      aiPreprocessConfig.value.desensitizeRules = await window.aiApi.mergeDesensitizeRules(plainRules, newLocale)
+      if (IS_ELECTRON) {
+        // Vue 响应式 Proxy 无法通过 Electron IPC structured clone，需转为普通对象
+        const plainRules = JSON.parse(JSON.stringify(aiPreprocessConfig.value.desensitizeRules))
+        aiPreprocessConfig.value.desensitizeRules = await window.aiApi.mergeDesensitizeRules(plainRules, newLocale)
+      }
     }
 
     /**

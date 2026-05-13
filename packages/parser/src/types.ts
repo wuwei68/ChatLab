@@ -3,7 +3,7 @@
  * 三层架构：标准层、嗅探层、解析层
  */
 
-import type { ChatPlatform, ChatType, ParsedMember, ParsedMessage } from '../../../src/types/base'
+import type { ChatPlatform, ChatType, ParsedMember, ParsedMessage } from '@openchatlab/shared-types'
 
 // ==================== 标准层：统一输出结构 ====================
 

@@ -10,6 +10,7 @@ import SidebarSortPopover from './sidebar/SidebarSortPopover.vue'
 import SubTabs from '@/components/UI/SubTabs.vue'
 import { useSessionStore } from '@/stores/session'
 import { useLayoutStore } from '@/stores/layout'
+import { IS_ELECTRON } from '@/utils/platform'
 
 const { t } = useI18n()
 
@@ -69,15 +70,17 @@ let unlistenImportCompleted: (() => void) | null = null
 
 onMounted(async () => {
   sessionStore.loadSessions()
-  try {
-    version.value = await window.api.app.getVersion()
-  } catch (e) {
-    console.error('Failed to get version', e)
-  }
+  if (IS_ELECTRON) {
+    try {
+      version.value = await window.api.app.getVersion()
+    } catch (e) {
+      console.error('Failed to get version', e)
+    }
 
-  unlistenImportCompleted = window.apiServerApi.onImportCompleted(() => {
-    sessionStore.loadSessions()
-  })
+    unlistenImportCompleted = window.apiServerApi.onImportCompleted(() => {
+      sessionStore.loadSessions()
+    })
+  }
 })
 
 onUnmounted(() => {

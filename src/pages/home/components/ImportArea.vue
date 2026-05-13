@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { getChatlabSiteLocalePath } from '@/utils/chatlabSiteLocale'
 import { useSessionStore, type BatchFileInfo, type MergeFileInfo } from '@/stores/session'
 import { getAdapter } from '@/adapters'
+import { IS_ELECTRON } from '@/utils/platform'
 import DemoImportButton from './DemoImportButton.vue'
 
 const { t } = useI18n()
@@ -36,8 +37,9 @@ const chatSelectorFilePath = ref('')
 const showFormatSelector = ref(false)
 const formatSelectorFilePath = ref('')
 
-// 自动生成会话索引（与 importFileFromPath 保持一致）
+// 自动生成会话索引（与 importFileFromPath 保持一致）- Electron only
 async function autoGenerateSessionIndex(sessionId: string) {
+  if (!IS_ELECTRON) return
   try {
     const savedThreshold = localStorage.getItem('sessionGapThreshold')
     const gapThreshold = savedThreshold ? parseInt(savedThreshold, 10) : 1800
@@ -110,14 +112,16 @@ async function navigateToSession(sessionId: string) {
   }
 }
 
-// 检查是否有导入日志
+// 检查是否有导入日志 - Electron only
 async function checkImportLog() {
+  if (!IS_ELECTRON) return
   const result = await window.cacheApi.getLatestImportLog()
   hasImportLog.value = result.success && !!result.path
 }
 
 // 处理文件选择（点击选择）- 支持多选
 async function handleClickImport() {
+  if (!IS_ELECTRON) return
   importError.value = null
   hasImportLog.value = false
   importDiagnostics.value = null
@@ -139,8 +143,9 @@ async function handleClickImport() {
   await processFilePaths(result.filePaths)
 }
 
-// 处理文件拖拽 - 支持多选
+// 处理文件拖拽 - 支持多选 - Electron only
 async function handleFileDrop({ paths }: { files: File[]; paths: string[] }) {
+  if (!IS_ELECTRON) return
   if (paths.length === 0) {
     importError.value = t('home.import.cannotReadPath')
     return

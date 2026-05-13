@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AnalysisSession, ImportProgress, ChatType } from '@/types/base'
 import { getAdapter } from '@/adapters'
+import { IS_ELECTRON } from '@/utils/platform'
 
 /** 侧边栏筛选类型 */
 export type SessionFilterType = 'all' | ChatType
@@ -124,6 +125,7 @@ export const useSessionStore = defineStore(
      * 检查是否需要数据库迁移
      */
     async function checkMigration(): Promise<MigrationCheckResult> {
+      if (!IS_ELECTRON) return { needsMigration: false, count: 0, currentVersion: 0, pendingMigrations: [] }
       try {
         const result = await window.chatApi.checkMigration()
         migrationNeeded.value = result.needsMigration

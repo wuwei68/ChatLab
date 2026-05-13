@@ -18,7 +18,7 @@
 import * as fs from 'fs'
 import * as readline from 'readline'
 import * as path from 'path'
-import { KNOWN_PLATFORMS, ChatType, MessageType } from '../../../../src/types/base'
+import { KNOWN_PLATFORMS, ChatType, MessageType } from '@openchatlab/shared-types'
 import type {
   FormatFeature,
   FormatModule,

@@ -19,7 +19,7 @@ import { chain } from 'stream-chain'
 import { parser } from 'stream-json'
 import { streamValues } from 'stream-json/streamers/StreamValues'
 
-import { KNOWN_PLATFORMS, ChatType } from '../../../../src/types/base'
+import { KNOWN_PLATFORMS, ChatType } from '@openchatlab/shared-types'
 import type {
   FormatFeature,
   FormatModule,

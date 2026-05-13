@@ -7,7 +7,7 @@ import Database from 'better-sqlite3'
 import * as fs from 'fs'
 import * as path from 'path'
 import { ChatType, type ParsedMember, type ParsedMessage } from '../../../src/types/base'
-import type { ParsedMeta } from '../parser/types'
+import type { ParsedMeta } from '../parser'
 import { getTempDir as getAppTempDir, ensureDir } from '../paths'
 
 /**

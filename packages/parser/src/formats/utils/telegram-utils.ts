@@ -3,7 +3,7 @@
  * 供 telegram-native（全量导出）和 telegram-native-single（单聊天导出）共用
  */
 
-import { ChatType, MessageType } from '../../../../../src/types/base'
+import { ChatType, MessageType } from '@openchatlab/shared-types'
 
 // ==================== 共享类型 ====================
 

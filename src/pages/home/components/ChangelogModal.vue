@@ -6,6 +6,7 @@ import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/settings'
 import { sanitizeSummary } from '@/utils/sanitizeSummary'
 import { getChangeTypeConfig } from './changelogTypeConfig'
+import { IS_ELECTRON } from '@/utils/platform'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -96,11 +97,20 @@ async function fetchChangelogs() {
   loadError.value = null
 
   try {
-    const result = await window.api.app.fetchRemoteConfig(getChangelogUrl(locale.value))
-    if (!result.success || !result.data) {
-      throw new Error(result.error || 'Failed to fetch')
+    const url = getChangelogUrl(locale.value)
+    let data: unknown
+    if (IS_ELECTRON) {
+      const result = await window.api.app.fetchRemoteConfig(url)
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Failed to fetch')
+      }
+      data = result.data
+    } else {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      data = await res.json()
     }
-    changelogs.value = result.data as ChangelogItem[]
+    changelogs.value = data as ChangelogItem[]
   } catch (error) {
     console.error('Failed to fetch changelogs:', error)
     loadError.value = t('home.changelog.loadError')
@@ -149,6 +159,7 @@ function markVersionAsRead(version: string) {
 
 // 检查是否需要显示新版本日志（冷启动时自动检查）
 async function checkNewVersion() {
+  if (!IS_ELECTRON) return
   try {
     // 0. 如果用户还没同意隐私协议，不检查更新日志（避免两个弹窗同时弹出）
     const acceptedAgreement = localStorage.getItem(AGREEMENT_KEY)
@@ -216,10 +227,12 @@ async function checkNewVersion() {
 // 手动打开弹窗（用户点击时调用），会自动获取数据
 async function open() {
   // 手动打开也标记当前版本，避免标签缺失
-  try {
-    currentAppVersion.value = normalizeVersion(await window.api.app.getVersion())
-  } catch {
-    currentAppVersion.value = null
+  if (IS_ELECTRON) {
+    try {
+      currentAppVersion.value = normalizeVersion(await window.api.app.getVersion())
+    } catch {
+      currentAppVersion.value = null
+    }
   }
   expandedState.value.clear()
   showModal.value = true

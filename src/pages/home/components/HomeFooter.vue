@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getChatlabSiteLocalePath, getChatlabSiteLangQuery } from '@/utils/chatlabSiteLocale'
+import { IS_ELECTRON } from '@/utils/platform'
 
 const emit = defineEmits<{
   openChangelog: []
@@ -135,9 +136,16 @@ async function fetchConfig(): Promise<void> {
   }
 
   try {
-    const result = await window.api.app.fetchRemoteConfig(configUrl.value)
-    if (!result.success || !result.data) return
-    const config = result.data as Record<string, unknown>
+    let config: Record<string, unknown>
+    if (IS_ELECTRON) {
+      const result = await window.api.app.fetchRemoteConfig(configUrl.value)
+      if (!result.success || !result.data) return
+      config = result.data as Record<string, unknown>
+    } else {
+      const res = await fetch(configUrl.value)
+      if (!res.ok) return
+      config = (await res.json()) as Record<string, unknown>
+    }
     // 保存整个配置对象（带语言后缀，用于 Footer）
     localStorage.setItem(storageKey.value, JSON.stringify(config))
     // 同时存储到不带后缀的 key（用于 AI 组件等其他地方）

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ProviderDefinition, ModelDefinition } from '@electron/preload/index'
+import { IS_ELECTRON } from '@/utils/platform'
 
 /**
  * LLM 服务配置（展示用，不含敏感信息）
@@ -72,6 +73,7 @@ export const useLLMStore = defineStore('llm', () => {
   }
 
   async function loadConfigs() {
+    if (!IS_ELECTRON) return
     isLoading.value = true
     try {
       const [providersData, registryData, catalogData, configsData, assistantSlot, fastSlot] = await Promise.all([

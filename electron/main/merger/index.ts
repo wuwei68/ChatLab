@@ -22,7 +22,7 @@ import type {
   MergeResult,
   MergeSource,
 } from '../../../src/types/format'
-import type { ParsedMeta } from '../parser/types'
+import type { ParsedMeta } from '../parser'
 
 /**
  * 获取默认输出目录（系统下载目录）

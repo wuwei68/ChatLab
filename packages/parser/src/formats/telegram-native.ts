@@ -21,7 +21,7 @@ import { parser } from 'stream-json'
 import { pick } from 'stream-json/filters/Pick'
 import { streamValues } from 'stream-json/streamers/StreamValues'
 
-import { KNOWN_PLATFORMS, ChatType } from '../../../../src/types/base'
+import { KNOWN_PLATFORMS, ChatType } from '@openchatlab/shared-types'
 import type {
   FormatFeature,
   FormatModule,
