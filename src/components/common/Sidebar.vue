@@ -133,9 +133,15 @@ function openDeleteModal(session: AnalysisSession) {
 async function confirmDelete() {
   if (!deleteTarget.value) return
 
-  await sessionStore.deleteSession(deleteTarget.value.id)
+  const deletedId = deleteTarget.value.id
+  const isViewingDeleted = route.params.id === deletedId
+  await sessionStore.deleteSession(deletedId)
   showDeleteModal.value = false
   deleteTarget.value = null
+
+  if (isViewingDeleted) {
+    router.push('/')
+  }
 }
 
 // 关闭删除确认弹窗

@@ -30,6 +30,9 @@ export async function initAdapter(): Promise<QueryAdapter> {
   } else {
     const { FetchAdapter } = await import('./fetch')
     _adapter = new FetchAdapter()
+
+    const { installWebApiShims } = await import('./web-api-shim')
+    installWebApiShims(_adapter)
   }
 
   return _adapter!

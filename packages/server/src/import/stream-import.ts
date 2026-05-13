@@ -121,22 +121,25 @@ export async function streamImport(
   const sessionId = generateSessionId()
   const dbPath = dbManager.getDbPath(sessionId)
 
+  let db: ReturnType<typeof openBetterSqliteDatabase> | null = null
   try {
-    const db = openBetterSqliteDatabase(dbPath, { nativeBinding })
+    db = openBetterSqliteDatabase(dbPath, { nativeBinding })
     db.exec(CHAT_DB_SCHEMA)
 
-    db.prepare(
-      `INSERT INTO meta (name, platform, type, imported_at, group_id, group_avatar, owner_id, schema_version)
+    db!
+      .prepare(
+        `INSERT INTO meta (name, platform, type, imported_at, group_id, group_avatar, owner_id, schema_version)
        VALUES (?, ?, ?, ?, ?, ?, ?, 4)`
-    ).run(
-      parsedMeta.name,
-      parsedMeta.platform,
-      parsedMeta.type,
-      Math.floor(Date.now() / 1000),
-      parsedMeta.groupId || null,
-      parsedMeta.groupAvatar || null,
-      parsedMeta.ownerId || null
-    )
+      )
+      .run(
+        parsedMeta.name,
+        parsedMeta.platform,
+        parsedMeta.type,
+        Math.floor(Date.now() / 1000),
+        parsedMeta.groupId || null,
+        parsedMeta.groupAvatar || null,
+        parsedMeta.ownerId || null
+      )
 
     const insertMember = db.prepare(
       `INSERT OR IGNORE INTO member (platform_id, account_name, group_nickname, avatar, roles)
@@ -176,7 +179,7 @@ export async function streamImport(
               '[]'
             )
             senderId = (
-              db.prepare('SELECT id FROM member WHERE platform_id = ?').get(msg.senderPlatformId) as { id: number }
+              db!.prepare('SELECT id FROM member WHERE platform_id = ?').get(msg.senderPlatformId) as { id: number }
             )?.id
             if (senderId) memberIdMap.set(msg.senderPlatformId, senderId)
           }
@@ -229,6 +232,11 @@ export async function streamImport(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    try {
+      db?.close()
+    } catch {
+      /* ignore */
+    }
     try {
       fs.unlinkSync(dbPath)
     } catch {

@@ -30,6 +30,12 @@ export function createServer(): FastifyInstance {
       return
     }
 
+    const statusCode = (error as any).statusCode
+    if (statusCode && statusCode >= 400 && statusCode < 600) {
+      reply.code(statusCode).send({ success: false, error: { code: 'CLIENT_ERROR', message: error.message } })
+      return
+    }
+
     const err = serverError(error.message)
     reply.code(err.statusCode).send(errorResponse(err))
   })

@@ -357,10 +357,10 @@ export class FetchAdapter implements QueryAdapter {
     return get('/_web/supported-formats')
   }
 
-  // ==================== 插件系统（不支持） ====================
+  // ==================== 插件系统 ====================
 
-  pluginQuery<T = Record<string, unknown>>(_sessionId: string, _sql: string, _params?: unknown[]): Promise<T[]> {
-    notImplemented('pluginQuery')
+  pluginQuery<T = Record<string, unknown>>(sessionId: string, sql: string, params?: unknown[]): Promise<T[]> {
+    return post<T[]>(`/_web/sessions/${sessionId}/query`, { sql, params: params ?? [] })
   }
 
   pluginCompute<T = unknown>(_fnString: string, _input: unknown): Promise<T> {

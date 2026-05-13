@@ -9,7 +9,11 @@ import Database from 'better-sqlite3'
 import type { DatabaseAdapter, PreparedStatement, RunResult } from '@openchatlab/core'
 
 class BetterSqlitePreparedStatement implements PreparedStatement {
-  constructor(private stmt: Database.Statement) {}
+  readonly?: boolean
+
+  constructor(private stmt: Database.Statement) {
+    this.readonly = stmt.readonly
+  }
 
   get(...params: unknown[]): Record<string, unknown> | undefined {
     return this.stmt.get(...params) as Record<string, unknown> | undefined

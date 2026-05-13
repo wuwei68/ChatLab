@@ -36,9 +36,7 @@ function resolveNativeBinding(): string | undefined {
 function ensureDb(dbManager: DatabaseManager, sessionId: string) {
   const db = dbManager.open(sessionId)
   if (!db) {
-    const err = new Error(`Session not found: ${sessionId}`)
-    ;(err as any).statusCode = 404
-    throw err
+    throw Object.assign(new Error(`Session not found: ${sessionId}`), { statusCode: 404 })
   }
   return db
 }
@@ -381,6 +379,31 @@ export function registerWebRoutes(server: FastifyInstance, dbManager: DatabaseMa
         })),
       }
     })
+  })
+
+  // ==================== 插件查询（参数化只读 SQL） ====================
+
+  server.post<{
+    Params: { id: string }
+    Body: { sql: string; params?: unknown[] | Record<string, unknown> }
+  }>('/_web/sessions/:id/query', async (request) => {
+    const db = ensureDb(dbManager, request.params.id)
+    const { sql, params = [] } = request.body as { sql: string; params?: unknown[] | Record<string, unknown> }
+
+    if (!sql || typeof sql !== 'string') {
+      throw Object.assign(new Error('Missing or invalid "sql" field'), { statusCode: 400 })
+    }
+
+    const stmt = db.prepare(sql.trim())
+
+    if (!stmt.readonly) {
+      throw Object.assign(new Error('Only READ-ONLY statements are allowed'), { statusCode: 403 })
+    }
+
+    if (Array.isArray(params)) {
+      return stmt.all(...params)
+    }
+    return stmt.all(params)
   })
 
   // ==================== 导入管线 ====================

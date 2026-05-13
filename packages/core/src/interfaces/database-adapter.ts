@@ -11,6 +11,12 @@
  */
 export interface PreparedStatement {
   /**
+   * 语句是否为只读（SELECT / WITH ... SELECT）
+   * better-sqlite3 原生支持此属性，用于安全检查。
+   */
+  readonly?: boolean
+
+  /**
    * 执行查询并返回第一行结果
    */
   get(...params: unknown[]): Record<string, unknown> | undefined
