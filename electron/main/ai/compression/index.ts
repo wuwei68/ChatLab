@@ -17,7 +17,7 @@ import {
 } from '@openchatlab/node-runtime'
 import { buildPiModel, findModelDefinition } from '../llm'
 import type { AIServiceConfig } from '../llm/types'
-import { completeSimple, type TextContent as PiTextContent } from '@mariozechner/pi-ai'
+import { completeSimple, type PiTextContent } from '@openchatlab/node-runtime'
 import { aiLogger } from '../logger'
 import { getManager } from '../conversations'
 

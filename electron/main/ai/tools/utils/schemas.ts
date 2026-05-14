@@ -3,7 +3,7 @@
  * 多个工具复用的时间参数 schema
  */
 
-import { Type } from '@mariozechner/pi-ai'
+import { Type } from '@openchatlab/node-runtime'
 
 export const timeParamProperties = {
   start_time: Type.Optional(Type.String({ description: 'ai.tools._shared.params.start_time' })),

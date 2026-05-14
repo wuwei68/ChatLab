@@ -10,7 +10,7 @@ import { getEmbeddingService } from '../embedding'
 import { getVectorStore } from '../store'
 import { getSessionChunks } from '../chunking'
 import { loadRAGConfig } from '../config'
-import { completeSimple, type TextContent as PiTextContent } from '@mariozechner/pi-ai'
+import { completeSimple, type PiTextContent } from '@openchatlab/node-runtime'
 import { getDefaultAssistantConfig, buildPiModel } from '../../llm'
 import { aiLogger as logger } from '../../logger'
 

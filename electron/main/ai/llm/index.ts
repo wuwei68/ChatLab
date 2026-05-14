@@ -13,7 +13,7 @@ import { aiLogger } from '../logger'
 import { resolveApiKey, writeAuthProfile } from '@openchatlab/config'
 import { buildChatLabUserAgentHeaders } from '../../utils/httpHeaders'
 import { t } from '../../i18n'
-import { completeSimple, type Model as PiModel, type Api as PiApi } from '@mariozechner/pi-ai'
+import { completeSimple, type PiModel, type PiApi } from '@openchatlab/node-runtime'
 
 // 新模型系统导出
 export { BUILTIN_PROVIDERS, getBuiltinProviderById } from './provider-registry'

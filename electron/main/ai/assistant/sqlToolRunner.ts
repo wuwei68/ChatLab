@@ -5,8 +5,8 @@
  * 通过 pluginQuery 执行参数化 SQL 并格式化结果。
  */
 
-import { Type } from '@mariozechner/pi-ai'
-import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core'
+import { Type } from '@openchatlab/node-runtime'
+import type { AgentTool, AgentToolResult } from '@openchatlab/node-runtime'
 import type { TSchema } from '@sinclair/typebox'
 import type { ToolContext } from '../tools/types'
 import type { CustomSqlToolDef, JsonSchemaObject } from './types'

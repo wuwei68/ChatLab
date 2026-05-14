@@ -2,7 +2,7 @@
  * AI Tools 类型定义
  */
 
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@openchatlab/node-runtime'
 import type { PreprocessConfig } from '../preprocessor'
 
 export type ToolCategory = 'core' | 'analysis'

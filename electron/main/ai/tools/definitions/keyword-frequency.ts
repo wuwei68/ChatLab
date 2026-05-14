@@ -1,5 +1,5 @@
-import { Type } from '@mariozechner/pi-ai'
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import { Type } from '@openchatlab/node-runtime'
+import type { AgentTool } from '@openchatlab/node-runtime'
 import type { ToolContext } from '../types'
 import * as workerManager from '../../../worker/workerManager'
 import { isChineseLocale } from '../utils/format'

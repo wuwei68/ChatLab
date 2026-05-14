@@ -45,8 +45,6 @@
     "@aptabase/electron": "^0.3.1",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
-    "@mariozechner/pi-agent-core": "0.54.2",
-    "@mariozechner/pi-ai": "0.54.2",
     "@node-rs/jieba": "^2.0.1",
     "@tanstack/vue-virtual": "^3.13.18",
     "@zumer/snapdom": "^2.0.1",

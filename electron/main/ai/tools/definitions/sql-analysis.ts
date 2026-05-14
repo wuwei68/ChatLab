@@ -5,7 +5,7 @@
  * 每个工具通过 createSqlTool() 将 JSON 定义转化为 AgentTool。
  */
 
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@openchatlab/node-runtime'
 import type { ToolContext, ToolRegistryEntry } from '../types'
 import type { CustomSqlToolDef } from '../../assistant/types'
 import { createSqlTool } from '../../assistant/sqlToolRunner'

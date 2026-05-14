@@ -15,12 +15,7 @@ import { countMessagesTokens } from '../ai/tokenizer'
 import * as assistantManager from '../ai/assistant'
 import type { AssistantConfig } from '../ai/assistant/types'
 import * as skillManager from '../ai/skills'
-import {
-  completeSimple,
-  streamSimple,
-  type Message as PiMessage,
-  type TextContent as PiTextContent,
-} from '@mariozechner/pi-ai'
+import { completeSimple, streamSimple, type PiMessage, type PiTextContent } from '@openchatlab/node-runtime'
 import { t } from '../i18n'
 import type { ToolContext } from '../ai/tools/types'
 import { TOOL_REGISTRY } from '../ai/tools/definitions'

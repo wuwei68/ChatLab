@@ -17,12 +17,6 @@ importers:
       '@electron-toolkit/utils':
         specifier: ^4.0.0
         version: 4.0.0(electron@35.7.5)
-      '@mariozechner/pi-agent-core':
-        specifier: 0.54.2
-        version: 0.54.2(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.19.0)(zod@3.25.76)
-      '@mariozechner/pi-ai':
-        specifier: 0.54.2
-        version: 0.54.2(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.19.0)(zod@3.25.76)
       '@node-rs/jieba':
         specifier: ^2.0.1
         version: 2.0.1

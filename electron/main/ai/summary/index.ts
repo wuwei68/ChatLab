@@ -8,7 +8,7 @@
  */
 
 import Database from 'better-sqlite3'
-import { completeSimple, type TextContent as PiTextContent } from '@mariozechner/pi-ai'
+import { completeSimple, type PiTextContent } from '@openchatlab/node-runtime'
 import { getFastModelConfig, buildPiModel } from '../llm'
 import { getDbPath, openDatabase } from '../../database/core'
 import { aiLogger } from '../logger'

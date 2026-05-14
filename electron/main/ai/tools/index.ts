@@ -5,7 +5,7 @@
  * 架构：工具返回结构化数据（rawMessages） → 处理层执行预处理 + 格式化 → 生成 LLM 内容
  */
 
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@openchatlab/node-runtime'
 import type { ToolContext, TruncationStrategy } from './types'
 import { TOOL_REGISTRY } from './definitions'
 
