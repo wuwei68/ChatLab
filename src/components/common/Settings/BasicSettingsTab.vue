@@ -116,20 +116,24 @@ watch(
             <UITabs v-model="currentLocale" size="sm" class="gap-0" :items="languageOptions"></UITabs>
           </div>
         </div>
-        <div class="border-t border-gray-200 dark:border-gray-700"></div>
-        <div class="flex items-center justify-between p-4">
-          <div class="flex-1 pr-4">
-            <p class="text-sm font-medium text-gray-900 dark:text-white">
-              {{ t('settings.basic.autoLaunch.openAtLogin') }}
-            </p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{
-                isPackaged ? t('settings.basic.autoLaunch.openAtLoginDesc') : t('settings.basic.autoLaunch.devModeHint')
-              }}
-            </p>
+        <template v-if="IS_ELECTRON">
+          <div class="border-t border-gray-200 dark:border-gray-700"></div>
+          <div class="flex items-center justify-between p-4">
+            <div class="flex-1 pr-4">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('settings.basic.autoLaunch.openAtLogin') }}
+              </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{
+                  isPackaged
+                    ? t('settings.basic.autoLaunch.openAtLoginDesc')
+                    : t('settings.basic.autoLaunch.devModeHint')
+                }}
+              </p>
+            </div>
+            <USwitch v-model="openAtLogin" :disabled="!isPackaged" @update:model-value="handleAutoLaunchChange" />
           </div>
-          <USwitch v-model="openAtLogin" :disabled="!isPackaged" @update:model-value="handleAutoLaunchChange" />
-        </div>
+        </template>
       </div>
     </div>
 
@@ -197,7 +201,7 @@ watch(
       </div>
     </div>
 
-    <!-- 网络设置 -->
-    <NetworkSettingsSection />
+    <!-- 网络设置（仅 Electron 桌面版） -->
+    <NetworkSettingsSection v-if="IS_ELECTRON" />
   </div>
 </template>

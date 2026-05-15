@@ -1,0 +1,289 @@
+/**
+ * @openchatlab/sync — Pull engine
+ *
+ * Core paginated pull loop extracted from electron/main/api/pullScheduler.ts.
+ * All platform-specific dependencies are injected via HttpFetcher, DataImporter, and SyncNotifier.
+ */
+
+import * as fs from 'fs'
+import * as crypto from 'crypto'
+import { NOOP_LOGGER } from './types'
+import type {
+  DataSource,
+  ImportSession,
+  HttpFetcher,
+  DataImporter,
+  SyncNotifier,
+  SyncLogger,
+  FetchParams,
+  SyncMeta,
+  PullSessionResult,
+} from './types'
+import type { DataSourceManager } from './data-source-manager'
+
+const MAX_PAGES_PER_PULL = 50
+const PULL_OVERLAP_SECONDS = 60
+
+// ==================== Helpers ====================
+
+export function buildPullUrl(baseUrl: string, remoteSessionId: string, params: FetchParams): string {
+  const base = `${baseUrl}/sessions/${remoteSessionId}/messages`
+  const qs: string[] = ['format=chatlab']
+  if (params.since !== undefined && params.since > 0) qs.push(`since=${params.since}`)
+  if (params.offset !== undefined && params.offset > 0) qs.push(`offset=${params.offset}`)
+  if (params.end !== undefined && params.end > 0) qs.push(`end=${params.end}`)
+  if (params.limit !== undefined && params.limit > 0) qs.push(`limit=${params.limit}`)
+  return base + '?' + qs.join('&')
+}
+
+export function deriveLocalSessionId(baseUrl: string, remoteSessionId: string): string {
+  const hash = crypto.createHash('sha256').update(`${baseUrl}\0${remoteSessionId}`).digest('hex').slice(0, 12)
+  return `remote_${hash}`
+}
+
+export function parseSyncFromFile(filePath: string): SyncMeta | null {
+  try {
+    const isJsonl = filePath.endsWith('.jsonl')
+    if (isJsonl) {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const lines = content.trimEnd().split('\n')
+      for (let i = lines.length - 1; i >= Math.max(0, lines.length - 5); i--) {
+        try {
+          const obj = JSON.parse(lines[i])
+          if (obj._type === 'sync') {
+            return {
+              hasMore: !!obj.hasMore,
+              nextSince: obj.nextSince,
+              nextOffset: obj.nextOffset,
+              watermark: obj.watermark,
+            }
+          }
+        } catch {
+          continue
+        }
+      }
+      return null
+    }
+
+    const raw = fs.readFileSync(filePath, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (parsed.sync && typeof parsed.sync === 'object') {
+      const s = parsed.sync
+      return { hasMore: !!s.hasMore, nextSince: s.nextSince, nextOffset: s.nextOffset, watermark: s.watermark }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function cleanupTempFile(filePath: string): void {
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+  } catch {
+    /* ignore */
+  }
+}
+
+// ==================== Pull Engine ====================
+
+export interface PullEngineOptions {
+  fetcher: HttpFetcher
+  importer: DataImporter
+  notifier: SyncNotifier
+  dsManager: DataSourceManager
+  logger?: SyncLogger
+  /** Return true when an import is already in progress (skip pull) */
+  isImporting?: () => boolean
+}
+
+export class PullEngine {
+  private fetcher: HttpFetcher
+  private importer: DataImporter
+  private notifier: SyncNotifier
+  private dsManager: DataSourceManager
+  private logger: SyncLogger
+  private isImporting: () => boolean
+
+  constructor(options: PullEngineOptions) {
+    this.fetcher = options.fetcher
+    this.importer = options.importer
+    this.notifier = options.notifier
+    this.dsManager = options.dsManager
+    this.logger = options.logger ?? NOOP_LOGGER
+    this.isImporting = options.isImporting ?? (() => false)
+  }
+
+  private async importTempFile(
+    baseUrl: string,
+    sess: ImportSession,
+    tempFile: string
+  ): Promise<{
+    success: boolean
+    newMessageCount: number
+    sessionId?: string
+    error?: string
+    needFullResync?: boolean
+  }> {
+    let targetId = sess.targetSessionId
+    if (!targetId) {
+      const derived = deriveLocalSessionId(baseUrl, sess.remoteSessionId)
+      if (this.importer.sessionExists(derived)) {
+        targetId = derived
+        this.logger.info(`[Pull] Reusing existing local session ${derived} for "${sess.name}"`)
+      }
+    }
+
+    const externalId = deriveLocalSessionId(baseUrl, sess.remoteSessionId)
+    return this.importer.importFile(tempFile, targetId || undefined, externalId)
+  }
+
+  async executePullSession(sourceId: string, ds: DataSource, sess: ImportSession): Promise<PullSessionResult> {
+    if (this.isImporting()) {
+      this.logger.info(`[Pull] Skipping "${sess.name}": import in progress`)
+      return { success: false, newMessageCount: 0, error: 'Import in progress' }
+    }
+
+    this.logger.info(`[Pull] Pulling "${sess.name}" from ${ds.baseUrl}`)
+
+    let totalNewMessages = 0
+    let since = sess.lastPullAt
+    let offset = 0
+    let end: number | undefined
+    let pageCount = 0
+    let resyncAttempted = false
+
+    try {
+      while (pageCount < MAX_PAGES_PER_PULL) {
+        pageCount++
+        const tempFile = await this.fetcher.fetchToTempFile(ds.baseUrl, sess.remoteSessionId, ds.token, {
+          since,
+          offset,
+          end,
+          limit: ds.pullLimit,
+        })
+
+        try {
+          const stat = fs.statSync(tempFile)
+          this.logger.info(`[Pull] "${sess.name}" page ${pageCount}: fetched ${stat.size} bytes`)
+          if (stat.size === 0) {
+            cleanupTempFile(tempFile)
+            break
+          }
+
+          const sync = parseSyncFromFile(tempFile)
+          const result = await this.importTempFile(ds.baseUrl, sess, tempFile)
+          cleanupTempFile(tempFile)
+
+          if (result.needFullResync && !resyncAttempted) {
+            resyncAttempted = true
+            this.logger.info(`[Pull] Resetting since=0 for "${sess.name}" full resync`)
+            since = 0
+            offset = 0
+            pageCount = 0
+            sess.targetSessionId = ''
+            sess.lastPullAt = 0
+            this.dsManager.updateSession(sourceId, sess.id, { targetSessionId: '', lastPullAt: 0 })
+            continue
+          }
+
+          if (result.needFullResync) {
+            const errMsg = 'Full resync failed'
+            this.logger.error(`[Pull] Full resync already attempted for "${sess.name}", aborting`)
+            this.dsManager.updateSession(sourceId, sess.id, {
+              lastPullAt: Math.floor(Date.now() / 1000),
+              lastStatus: 'error',
+              lastError: errMsg,
+            })
+            this.notifier.onPullResult(sourceId, sess.id, 'error', errMsg)
+            return { success: false, newMessageCount: 0, error: errMsg }
+          }
+
+          if (!result.success) {
+            const errMsg = result.error || 'Import failed'
+            this.dsManager.updateSession(sourceId, sess.id, {
+              lastPullAt: Math.floor(Date.now() / 1000),
+              lastStatus: 'error',
+              lastError: errMsg,
+            })
+            this.notifier.onPullResult(sourceId, sess.id, 'error', errMsg)
+            return { success: false, newMessageCount: 0, error: errMsg }
+          }
+
+          if (!sess.targetSessionId && result.sessionId) {
+            sess.targetSessionId = result.sessionId
+            this.dsManager.updateSession(sourceId, sess.id, { targetSessionId: result.sessionId })
+          }
+
+          totalNewMessages += result.newMessageCount
+
+          if (!sync || !sync.hasMore) break
+
+          if (sync.nextSince !== undefined) since = sync.nextSince
+          if (sync.nextOffset !== undefined) offset = sync.nextOffset
+          else offset = 0
+          if (sync.watermark !== undefined && !end) end = sync.watermark
+        } catch (importErr) {
+          cleanupTempFile(tempFile)
+          throw importErr
+        }
+      }
+
+      if (pageCount >= MAX_PAGES_PER_PULL) {
+        this.logger.warn(`[Pull] "${sess.name}" reached page limit (${MAX_PAGES_PER_PULL}), data may be incomplete`)
+      }
+
+      this.dsManager.updateSession(sourceId, sess.id, {
+        lastPullAt: Math.floor(Date.now() / 1000) - PULL_OVERLAP_SECONDS,
+        lastStatus: 'success',
+        lastNewMessages: totalNewMessages,
+        lastError: '',
+      })
+      if (totalNewMessages > 0) this.notifier.onSessionListChanged()
+      this.notifier.onPullResult(sourceId, sess.id, 'success', `+${totalNewMessages} messages`)
+      return { success: true, newMessageCount: totalNewMessages }
+    } catch (error: any) {
+      const errMsg = error.message || 'Pull failed'
+      this.logger.error(`[Pull] Pull failed for "${sess.name}"`, error)
+      this.dsManager.updateSession(sourceId, sess.id, {
+        lastPullAt: Math.floor(Date.now() / 1000),
+        lastStatus: 'error',
+        lastError: errMsg,
+      })
+      this.notifier.onPullResult(sourceId, sess.id, 'error', errMsg)
+      return { success: false, newMessageCount: 0, error: errMsg }
+    }
+  }
+
+  async pullAllSessions(ds: DataSource): Promise<void> {
+    for (const sess of ds.sessions) {
+      await this.executePullSession(ds.id, ds, sess)
+    }
+  }
+
+  async triggerPull(sourceId: string, sessionId?: string): Promise<{ success: boolean; error?: string }> {
+    const ds = this.dsManager.get(sourceId)
+    if (!ds) return { success: false, error: 'Data source not found' }
+
+    if (sessionId) {
+      const sess = ds.sessions.find((s) => s.id === sessionId)
+      if (!sess) return { success: false, error: 'Session not found' }
+      const result = await this.executePullSession(sourceId, ds, sess)
+      return { success: result.success, error: result.error }
+    }
+
+    const errors: string[] = []
+    for (const sess of ds.sessions) {
+      const result = await this.executePullSession(sourceId, ds, sess)
+      if (!result.success && result.error) errors.push(`${sess.name}: ${result.error}`)
+    }
+    if (errors.length > 0) {
+      return { success: false, error: errors.join('; ') }
+    }
+    return { success: true }
+  }
+
+  async triggerPullAll(sourceId: string): Promise<{ success: boolean; error?: string }> {
+    return this.triggerPull(sourceId)
+  }
+}

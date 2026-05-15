@@ -13,7 +13,8 @@
     "packages/config/**/*",
     "packages/parser/**/*",
     "packages/server/**/*",
-    "packages/tools/**/*"
+    "packages/tools/**/*",
+    "packages/sync/**/*"
   ],
   "compilerOptions": {
     "composite": true,

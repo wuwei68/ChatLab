@@ -20,6 +20,7 @@ import { registerWebRoutes } from './routes/web'
 import { registerNlpRoutes } from './routes/nlp'
 import { registerAiRoutes } from './routes/ai'
 import { initServerAiLogger, closeServerAiLogger } from '../ai/logger'
+import { initSync, cleanupSync } from '../sync'
 
 let server: FastifyInstance | null = null
 let dbManager: DatabaseManager | null = null
@@ -116,6 +117,8 @@ export async function startHttpServer(options?: HttpServerOptions): Promise<{
   registerAiRoutes(server, dbManager, convManager)
   registerWebRoutes(server, dbManager)
 
+  initSync(server, dbManager, pathProvider, { port, host, token })
+
   // 托管 Web SPA 静态资源
   if (options?.webRoot && fs.existsSync(options.webRoot)) {
     const fastifyStatic = await import('@fastify/static')
@@ -144,6 +147,7 @@ export async function stopHttpServer(): Promise<void> {
   try {
     await server.close()
   } finally {
+    cleanupSync()
     if (convManager) {
       convManager.close()
       convManager = null

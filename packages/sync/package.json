@@ -1,0 +1,8 @@
+{
+  "name": "@openchatlab/sync",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ChatLab platform-agnostic data sync engine: config, data source, pull scheduler",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}
