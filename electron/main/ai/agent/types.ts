@@ -2,9 +2,11 @@
  * Agent 模块类型定义
  */
 
-import type { TokenUsage, AgentRuntimeStatus, SerializedErrorInfo } from '../../../shared/types'
+import type { TokenUsage } from '@openchatlab/node-runtime'
+import type { SerializedErrorInfo } from '../../../shared/types'
 
-export type { TokenUsage, AgentRuntimeStatus, SerializedErrorInfo } from '../../../shared/types'
+export type { TokenUsage, AgentRuntimeStatus } from '@openchatlab/node-runtime'
+export type { SerializedErrorInfo }
 
 /**
  * Agent 配置
@@ -17,39 +19,9 @@ export interface AgentConfig {
 }
 
 /**
- * Agent 流式响应 chunk
+ * Agent stream chunk — re-exported from shared, used by Electron IPC layer.
  */
-export interface AgentStreamChunk {
-  /** chunk 类型 */
-  type: 'content' | 'think' | 'tool_start' | 'tool_result' | 'status' | 'compression_done' | 'done' | 'error'
-  /** 文本内容（type=content 时） */
-  content?: string
-  /** 思考标签名称（type=think 时） */
-  thinkTag?: string
-  /** 思考耗时（毫秒，type=think 时可选） */
-  thinkDurationMs?: number
-  /** 工具名称（type=tool_start/tool_result 时） */
-  toolName?: string
-  /** 工具调用参数（type=tool_start 时） */
-  toolParams?: Record<string, unknown>
-  /** 工具执行结果（type=tool_result 时） */
-  toolResult?: unknown
-  /** 结构化错误信息（type=error 时） */
-  error?: SerializedErrorInfo
-  /** 是否完成 */
-  isFinished?: boolean
-  /** Token 使用量（type=done 时返回累计值） */
-  usage?: TokenUsage
-  /** 运行状态（type=status 时返回） */
-  status?: AgentRuntimeStatus
-  /** 压缩结果（type=compression_done 时） */
-  compressionResult?: {
-    summaryContent: string
-    tokensBefore: number
-    tokensAfter: number
-    timestamp: number
-  }
-}
+export type { AgentStreamChunk } from '@openchatlab/node-runtime'
 
 /**
  * Agent 执行结果

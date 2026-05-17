@@ -62,6 +62,16 @@ export type { PreprocessingPipelineOptions, PreprocessingPipelineResult } from '
 export type { AgentCoreOptions, AgentCoreEvent, AgentCoreResult, AgentTokenUsage, SimpleHistoryMessage } from './agent'
 export { runAgentCore } from './agent'
 
+// Agent Event Handler
+export { AgentEventHandler, estimateTokensFromText } from './agent/event-handler'
+export type {
+  TokenUsage,
+  AgentRuntimeStatus,
+  AgentStreamChunk,
+  EventHandlerConfig,
+  EventHandlerContext,
+} from './agent/event-handler'
+
 // Agent Prompt Builder
 export { buildSystemPrompt } from './agent/prompt-builder'
 export type {

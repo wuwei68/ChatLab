@@ -88,6 +88,10 @@ export type {
 export type { AgentCoreOptions, AgentCoreEvent, AgentCoreResult, AgentTokenUsage, SimpleHistoryMessage } from './ai'
 export { runAgentCore } from './ai'
 
+// Agent Event Handler
+export { AgentEventHandler, estimateTokensFromText } from './ai'
+export type { TokenUsage, AgentRuntimeStatus, AgentStreamChunk, EventHandlerConfig, EventHandlerContext } from './ai'
+
 // Agent Prompt Builder
 export { buildSystemPrompt } from './ai'
 export type { BuildSystemPromptOptions, OwnerInfo, MentionedMember, SkillContext, TranslateFn } from './ai'
