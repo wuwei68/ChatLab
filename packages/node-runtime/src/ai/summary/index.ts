@@ -1,0 +1,339 @@
+/**
+ * Session summary generation — shared implementation.
+ *
+ * Uses Map-Reduce strategy for long conversations.
+ * All platform-specific concerns (DB access, LLM invocation, i18n) are injected
+ * via the SummaryDeps interface.
+ */
+
+// ==================== Types ====================
+
+export interface SummaryMessage {
+  senderName: string
+  content: string | null
+}
+
+export interface SummaryDeps {
+  loadMessages: (chatSessionId: number, limit?: number) => SummaryMessage[] | null
+  saveSummary: (chatSessionId: number, summary: string) => void
+  getSummary: (chatSessionId: number) => string | null
+  llmComplete: (
+    systemPrompt: string,
+    userPrompt: string,
+    options?: { temperature?: number; maxTokens?: number }
+  ) => Promise<string>
+  t: (key: string, options?: Record<string, unknown>) => string
+  logger?: {
+    info: (category: string, message: string, data?: unknown) => void
+    error: (category: string, message: string, data?: unknown) => void
+  }
+}
+
+export interface SummaryOptions {
+  locale?: string
+  forceRegenerate?: boolean
+}
+
+export interface SummaryResult {
+  success: boolean
+  summary?: string
+  error?: string
+}
+
+// ==================== Constants ====================
+
+const MIN_MESSAGE_COUNT = 3
+const MAX_CONTENT_PER_CALL = 8000
+const SEGMENT_THRESHOLD = 8000
+
+// ==================== Pure algorithms ====================
+
+function getSummaryLengthLimit(messageCount: number): number {
+  if (messageCount <= 10) return 50
+  if (messageCount <= 30) return 80
+  if (messageCount <= 100) return 120
+  return 200
+}
+
+const MEANINGFUL_SHORT_ZH = ['好的', '不是', '是的', '可以', '不行', '好吧', '明白', '知道', '同意']
+const MEANINGLESS_SHORT_EN = [
+  'ok',
+  'k',
+  'yes',
+  'no',
+  'ya',
+  'yep',
+  'nope',
+  'lol',
+  'haha',
+  'hehe',
+  'hmm',
+  'ah',
+  'oh',
+  'wow',
+  'thx',
+  'ty',
+  'np',
+  'gg',
+  'brb',
+  'idk',
+]
+const PLACEHOLDERS = [
+  '[图片]',
+  '[语音]',
+  '[视频]',
+  '[文件]',
+  '[表情]',
+  '[动画表情]',
+  '[位置]',
+  '[名片]',
+  '[红包]',
+  '[转账]',
+  '[撤回消息]',
+  '[image]',
+  '[voice]',
+  '[video]',
+  '[file]',
+  '[sticker]',
+  '[animated sticker]',
+  '[location]',
+  '[contact]',
+  '[red packet]',
+  '[transfer]',
+  '[recalled message]',
+  '[photo]',
+  '[audio]',
+  '[gif]',
+]
+const SYSTEM_PATTERNS_ZH = [/^.*邀请.*加入了群聊$/, /^.*退出了群聊$/, /^.*撤回了一条消息$/, /^你撤回了一条消息$/]
+const SYSTEM_PATTERNS_EN = [
+  /^.*invited.*to the group$/i,
+  /^.*left the group$/i,
+  /^.*recalled a message$/i,
+  /^you recalled a message$/i,
+  /^.*joined the group$/i,
+  /^.*has been removed$/i,
+]
+
+export function isValidMessage(content: string): boolean {
+  const trimmed = content.trim()
+  if (!trimmed) return false
+
+  if (trimmed.length <= 2 && !MEANINGFUL_SHORT_ZH.includes(trimmed)) return false
+
+  const lower = trimmed.toLowerCase()
+  if (MEANINGLESS_SHORT_EN.includes(lower)) return false
+
+  if (/^[\p{Emoji}\s[\]（）()]+$/u.test(trimmed)) return false
+  if (PLACEHOLDERS.some((p) => lower === p.toLowerCase())) return false
+  if (SYSTEM_PATTERNS_ZH.some((p) => p.test(trimmed))) return false
+  if (SYSTEM_PATTERNS_EN.some((p) => p.test(trimmed))) return false
+
+  return true
+}
+
+export function filterValidMessages(messages: SummaryMessage[]): Array<{ senderName: string; content: string }> {
+  return messages
+    .filter((m) => m.content && isValidMessage(m.content))
+    .map((m) => ({ senderName: m.senderName, content: m.content!.trim() }))
+}
+
+function formatMessages(messages: Array<{ senderName: string; content: string }>): string {
+  return messages.map((m) => `${m.senderName}: ${m.content}`).join('\n')
+}
+
+export function splitIntoSegments(
+  messages: Array<{ senderName: string; content: string }>,
+  maxCharsPerSegment: number
+): Array<Array<{ senderName: string; content: string }>> {
+  const segments: Array<Array<{ senderName: string; content: string }>> = []
+  let currentSegment: Array<{ senderName: string; content: string }> = []
+  let currentLength = 0
+
+  for (const msg of messages) {
+    const msgLength = msg.senderName.length + msg.content.length + 3
+    if (currentLength + msgLength > maxCharsPerSegment && currentSegment.length > 0) {
+      segments.push(currentSegment)
+      currentSegment = []
+      currentLength = 0
+    }
+    currentSegment.push(msg)
+    currentLength += msgLength
+  }
+  if (currentSegment.length > 0) segments.push(currentSegment)
+  return segments
+}
+
+// ==================== Prompt builders ====================
+
+function buildSummaryPrompt(content: string, lengthLimit: number, locale: string): string {
+  if (locale.startsWith('zh')) {
+    return `请用简洁的语言（${lengthLimit}字以内）总结以下对话的主要内容或话题。只输出摘要内容，不要添加任何前缀、解释或引号。\n\n${content}`
+  }
+  return `Summarize the following conversation concisely (max ${lengthLimit} characters). Output only the summary, no prefix, explanation, or quotes.\n\n${content}`
+}
+
+function buildSubSummaryPrompt(content: string, locale: string): string {
+  if (locale.startsWith('zh')) {
+    return `请用一句话（不超过50字）概括以下对话片段的主要内容。只输出摘要内容，不要添加任何前缀、解释或引号。\n\n${content}`
+  }
+  return `Summarize this conversation segment in one sentence (max 50 characters). Output only the summary, no prefix or quotes.\n\n${content}`
+}
+
+function buildMergePrompt(subSummaries: string[], lengthLimit: number, locale: string): string {
+  const list = subSummaries.map((s, i) => `${i + 1}. ${s}`).join('\n')
+  if (locale.startsWith('zh')) {
+    return `以下是一段对话的多个片段摘要，请将它们合并成一个完整的总结（${lengthLimit}字以内）。只输出摘要内容，不要添加任何前缀、解释或引号。\n\n${list}`
+  }
+  return `Below are summaries of different parts of a conversation. Merge them into one cohesive summary (max ${lengthLimit} characters). Output only the summary, no prefix or quotes.\n\n${list}`
+}
+
+// ==================== Post-processing ====================
+
+function postProcessSummary(summary: string, lengthLimit: number): string {
+  let result = summary
+  if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith('「') && result.endsWith('」'))) {
+    result = result.slice(1, -1)
+  }
+  const hardLimit = Math.floor(lengthLimit * 1.5)
+  if (result.length > hardLimit) {
+    result = result.slice(0, hardLimit - 3) + '...'
+  }
+  return result
+}
+
+// ==================== Public API ====================
+
+export async function generateSessionSummary(
+  deps: SummaryDeps,
+  chatSessionId: number,
+  options: SummaryOptions = {}
+): Promise<SummaryResult> {
+  const { locale = 'zh-CN', forceRegenerate = false } = options
+  const log = deps.logger
+
+  try {
+    if (!forceRegenerate) {
+      const existing = deps.getSummary(chatSessionId)
+      if (existing) return { success: true, summary: existing }
+    }
+
+    const rawMessages = deps.loadMessages(chatSessionId)
+    if (!rawMessages) {
+      return { success: false, error: deps.t('summary.sessionNotFound') }
+    }
+
+    if (rawMessages.length < MIN_MESSAGE_COUNT) {
+      return { success: false, error: deps.t('summary.tooFewMessages', { count: MIN_MESSAGE_COUNT }) }
+    }
+
+    const validMessages = filterValidMessages(rawMessages)
+    if (validMessages.length < MIN_MESSAGE_COUNT) {
+      return { success: false, error: deps.t('summary.tooFewValidMessages', { count: MIN_MESSAGE_COUNT }) }
+    }
+
+    const lengthLimit = getSummaryLengthLimit(validMessages.length)
+    const content = formatMessages(validMessages)
+
+    log?.info(
+      'Summary',
+      `Generating summary: sessionId=${chatSessionId}, raw=${rawMessages.length}, valid=${validMessages.length}, chars=${content.length}`
+    )
+
+    let summary: string
+    if (content.length <= SEGMENT_THRESHOLD) {
+      summary = await deps.llmComplete(
+        deps.t('summary.systemPromptDirect'),
+        buildSummaryPrompt(content, lengthLimit, locale),
+        { temperature: 0.3, maxTokens: 300 }
+      )
+      summary = summary.trim()
+    } else {
+      const segments = splitIntoSegments(validMessages, MAX_CONTENT_PER_CALL)
+      log?.info('Summary', `Long session segmented: ${segments.length} segments`)
+
+      const subSummaries: string[] = []
+      for (const segment of segments) {
+        const segContent = formatMessages(segment)
+        const sub = await deps.llmComplete(
+          deps.t('summary.systemPromptDirect'),
+          buildSubSummaryPrompt(segContent, locale),
+          { temperature: 0.3, maxTokens: 100 }
+        )
+        subSummaries.push(sub.trim())
+      }
+
+      if (subSummaries.length === 1) {
+        summary = subSummaries[0]
+      } else {
+        summary = await deps.llmComplete(
+          deps.t('summary.systemPromptMerge'),
+          buildMergePrompt(subSummaries, lengthLimit, locale),
+          { temperature: 0.3, maxTokens: 300 }
+        )
+        summary = summary.trim()
+      }
+    }
+
+    summary = postProcessSummary(summary, lengthLimit)
+    deps.saveSummary(chatSessionId, summary)
+
+    log?.info('Summary', `Summary generated: "${summary.slice(0, 50)}..."`)
+    return { success: true, summary }
+  } catch (error) {
+    log?.error('Summary', 'Summary generation failed', error)
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+export async function generateSessionSummaries(
+  deps: SummaryDeps,
+  chatSessionIds: number[],
+  options: SummaryOptions = {},
+  onProgress?: (current: number, total: number) => void
+): Promise<{ success: number; failed: number; skipped: number }> {
+  let success = 0
+  let failed = 0
+  let skipped = 0
+
+  for (let i = 0; i < chatSessionIds.length; i++) {
+    const result = await generateSessionSummary(deps, chatSessionIds[i], options)
+    if (result.success) {
+      success++
+    } else if (result.error?.includes('少于') || result.error?.includes('less than') || result.error?.includes('few')) {
+      skipped++
+    } else {
+      failed++
+    }
+    onProgress?.(i + 1, chatSessionIds.length)
+  }
+
+  return { success, failed, skipped }
+}
+
+export function checkSessionsCanGenerateSummary(
+  deps: Pick<SummaryDeps, 'loadMessages' | 't'>,
+  chatSessionIds: number[]
+): Map<number, { canGenerate: boolean; reason?: string }> {
+  const results = new Map<number, { canGenerate: boolean; reason?: string }>()
+
+  for (const id of chatSessionIds) {
+    const messages = deps.loadMessages(id)
+    if (!messages) {
+      results.set(id, { canGenerate: false, reason: deps.t('summary.sessionNotExist') })
+      continue
+    }
+    if (messages.length < MIN_MESSAGE_COUNT) {
+      results.set(id, { canGenerate: false, reason: deps.t('summary.messagesTooFew') })
+      continue
+    }
+    const valid = filterValidMessages(messages)
+    if (valid.length < MIN_MESSAGE_COUNT) {
+      results.set(id, { canGenerate: false, reason: deps.t('summary.validMessagesTooFew') })
+      continue
+    }
+    results.set(id, { canGenerate: true })
+  }
+
+  return results
+}

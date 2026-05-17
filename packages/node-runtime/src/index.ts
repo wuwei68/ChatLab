@@ -88,6 +88,17 @@ export type {
 export type { AgentCoreOptions, AgentCoreEvent, AgentCoreResult, AgentTokenUsage, SimpleHistoryMessage } from './ai'
 export { runAgentCore } from './ai'
 
+// Summary generation
+export {
+  generateSessionSummary,
+  generateSessionSummaries,
+  checkSessionsCanGenerateSummary,
+  isValidMessage,
+  filterValidMessages,
+  splitIntoSegments,
+} from './ai'
+export type { SummaryDeps, SummaryMessage, SummaryOptions, SummaryResult } from './ai'
+
 // Agent Event Handler
 export { AgentEventHandler, estimateTokensFromText } from './ai'
 export type { TokenUsage, AgentRuntimeStatus, AgentStreamChunk, EventHandlerConfig, EventHandlerContext } from './ai'

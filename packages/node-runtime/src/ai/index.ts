@@ -82,6 +82,17 @@ export type {
   TranslateFn,
 } from './agent/prompt-builder'
 
+// Summary generation
+export {
+  generateSessionSummary,
+  generateSessionSummaries,
+  checkSessionsCanGenerateSummary,
+  isValidMessage,
+  filterValidMessages,
+  splitIntoSegments,
+} from './summary'
+export type { SummaryDeps, SummaryMessage, SummaryOptions, SummaryResult } from './summary'
+
 // LLM Model Builder
 export { buildPiModel, normalizeAnthropicBaseUrl, normalizeOpenAICompatibleBaseUrl } from './llm-builder'
 export type { PiModelConfig, BuildPiModelOptions } from './llm-builder'
