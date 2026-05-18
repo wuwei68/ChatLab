@@ -6,8 +6,8 @@
  */
 
 import type { DatabaseManager } from '@openchatlab/node-runtime'
-import { openBetterSqliteDatabase } from '@openchatlab/node-runtime'
-import { CHAT_DB_SCHEMA, FTS_TABLE_SCHEMA, buildMemberIdMap } from '@openchatlab/core'
+import { openBetterSqliteDatabase, writeParseResultToDb, buildFtsIndex } from '@openchatlab/node-runtime'
+import { CHAT_DB_SCHEMA } from '@openchatlab/core'
 import {
   streamParseFile,
   detectFormat as parserDetectFormat,
@@ -125,99 +125,11 @@ export async function streamImport(
     db = openBetterSqliteDatabase(dbPath, { nativeBinding })
     db.exec(CHAT_DB_SCHEMA)
 
-    db!
-      .prepare(
-        `INSERT INTO meta (name, platform, type, imported_at, group_id, group_avatar, owner_id, schema_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 4)`
-      )
-      .run(
-        parsedMeta.name,
-        parsedMeta.platform,
-        parsedMeta.type,
-        Math.floor(Date.now() / 1000),
-        parsedMeta.groupId || null,
-        parsedMeta.groupAvatar || null,
-        parsedMeta.ownerId || null
-      )
-
-    const insertMember = db.prepare(
-      `INSERT OR IGNORE INTO member (platform_id, account_name, group_nickname, avatar, roles)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    for (const m of members) {
-      insertMember.run(
-        m.platformId,
-        m.accountName || m.platformId,
-        m.groupNickname || null,
-        m.avatar || null,
-        m.roles ? JSON.stringify(m.roles) : '[]'
-      )
-    }
-
-    const memberIdMap = buildMemberIdMap(db)
-
-    const insertMsg = db.prepare(
-      `INSERT INTO message (sender_id, sender_account_name, sender_group_nickname, ts, type, content, reply_to_message_id, platform_message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-
-    let written = 0
-    const BATCH = 5000
-
-    for (let i = 0; i < messages.length; i += BATCH) {
-      const batch = messages.slice(i, i + BATCH)
-      db.transaction(() => {
-        for (const msg of batch) {
-          let senderId = memberIdMap.get(msg.senderPlatformId)
-          if (!senderId) {
-            insertMember.run(
-              msg.senderPlatformId,
-              msg.senderAccountName || msg.senderPlatformId,
-              msg.senderGroupNickname || null,
-              null,
-              '[]'
-            )
-            senderId = (
-              db!.prepare('SELECT id FROM member WHERE platform_id = ?').get(msg.senderPlatformId) as { id: number }
-            )?.id
-            if (senderId) memberIdMap.set(msg.senderPlatformId, senderId)
-          }
-          if (!senderId) continue
-
-          insertMsg.run(
-            senderId,
-            msg.senderAccountName || null,
-            msg.senderGroupNickname || null,
-            msg.timestamp,
-            msg.type,
-            msg.content,
-            msg.replyToMessageId || null,
-            msg.platformMessageId || null
-          )
-          written++
-        }
-      })
-
-      const pct = 75 + Math.round((Math.min(i + BATCH, messages.length) / messages.length) * 15)
-      onProgress?.({ stage: 'saving', progress: pct, message: '', messagesProcessed: written })
-    }
+    onProgress?.({ stage: 'saving', progress: 80, message: '' })
+    const stats = writeParseResultToDb(db, parsedMeta, members, messages)
 
     onProgress?.({ stage: 'indexing', progress: 92, message: '' })
-
-    db.exec(FTS_TABLE_SCHEMA)
-    const textMessages = db
-      .prepare("SELECT id, content FROM message WHERE type = 0 AND content IS NOT NULL AND content != ''")
-      .all() as Array<{ id: number; content: string }>
-
-    const insertFts = db.prepare('INSERT INTO message_fts(rowid, content) VALUES (?, ?)')
-    for (let i = 0; i < textMessages.length; i += BATCH) {
-      const batch = textMessages.slice(i, i + BATCH)
-      db.transaction(() => {
-        for (const row of batch) {
-          insertFts.run(row.id, row.content)
-        }
-      })
-    }
+    buildFtsIndex(db)
 
     db.close()
 
@@ -226,8 +138,8 @@ export async function streamImport(
     return {
       success: true,
       sessionId,
-      messageCount: written,
-      memberCount: members.length,
+      messageCount: stats.messageCount,
+      memberCount: stats.memberCount,
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

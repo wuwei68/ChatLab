@@ -10,7 +10,7 @@ import * as crypto from 'crypto'
 import type { DatabaseAdapter } from '@openchatlab/core'
 import { CHAT_DB_SCHEMA, FTS_TABLE_SCHEMA, generateMessageKey, buildMemberIdMap } from '@openchatlab/core'
 import type { DatabaseManager } from '@openchatlab/node-runtime'
-import { openBetterSqliteDatabase } from '@openchatlab/node-runtime'
+import { openBetterSqliteDatabase, writeParseResultToDb } from '@openchatlab/node-runtime'
 import type { ParsedData, ImportMessage } from './chatlab-reader'
 
 export interface ImportResult {
@@ -37,6 +37,7 @@ function generateSessionId(): string {
 
 /**
  * 新建导入：创建新的会话数据库并导入全部数据
+ * Delegates to shared writeParseResultToDb for data writing + name history.
  */
 function fullImport(
   db: DatabaseAdapter,
@@ -45,92 +46,12 @@ function fullImport(
 ): { messageCount: number; memberCount: number; duplicateCount: number } {
   db.exec(CHAT_DB_SCHEMA)
 
-  onProgress?.('写入元信息...')
-  db.prepare(
-    `INSERT INTO meta (name, platform, type, imported_at, group_id, group_avatar, owner_id, schema_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 4)`
-  ).run(
-    data.meta.name,
-    data.meta.platform,
-    data.meta.type,
-    Math.floor(Date.now() / 1000),
-    data.meta.groupId || null,
-    data.meta.groupAvatar || null,
-    data.meta.ownerId || null
-  )
-
-  onProgress?.(`写入 ${data.members.length} 个成员...`)
-  const insertMember = db.prepare(
-    `INSERT OR IGNORE INTO member (platform_id, account_name, group_nickname, avatar, roles)
-     VALUES (?, ?, ?, ?, ?)`
-  )
-  for (const m of data.members) {
-    insertMember.run(
-      m.platformId,
-      m.accountName || m.platformId,
-      m.groupNickname || null,
-      m.avatar || null,
-      m.roles ? JSON.stringify(m.roles) : '[]'
-    )
-  }
-
-  const memberIdMap = buildMemberIdMap(db)
-
-  onProgress?.(`写入 ${data.messages.length} 条消息...`)
-  const insertMsg = db.prepare(
-    `INSERT INTO message (sender_id, sender_account_name, sender_group_nickname, ts, type, content, reply_to_message_id, platform_message_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-
-  let written = 0
-  let skipped = 0
-  const BATCH = 5000
-
-  for (let i = 0; i < data.messages.length; i += BATCH) {
-    const batch = data.messages.slice(i, i + BATCH)
-    db.transaction(() => {
-      for (const msg of batch) {
-        let senderId = memberIdMap.get(msg.senderPlatformId)
-        if (!senderId) {
-          insertMember.run(
-            msg.senderPlatformId,
-            msg.senderAccountName || msg.senderPlatformId,
-            msg.senderGroupNickname || null,
-            null,
-            '[]'
-          )
-          senderId = (
-            db.prepare('SELECT id FROM member WHERE platform_id = ?').get(msg.senderPlatformId) as { id: number }
-          )?.id
-          if (senderId) memberIdMap.set(msg.senderPlatformId, senderId)
-        }
-        if (!senderId) {
-          skipped++
-          continue
-        }
-
-        insertMsg.run(
-          senderId,
-          msg.senderAccountName || null,
-          msg.senderGroupNickname || null,
-          msg.timestamp,
-          msg.type,
-          msg.content,
-          msg.replyToMessageId || null,
-          msg.platformMessageId || null
-        )
-        written++
-      }
-    })
-
-    if (onProgress && (i + BATCH) % 50000 < BATCH) {
-      onProgress(`已写入 ${Math.min(i + BATCH, data.messages.length)} / ${data.messages.length} 条消息`)
-    }
-  }
+  onProgress?.(`写入 ${data.members.length} 个成员, ${data.messages.length} 条消息...`)
+  const stats = writeParseResultToDb(db, data.meta, data.members, data.messages)
 
   buildFts(db, onProgress)
 
-  return { messageCount: written, memberCount: data.members.length, duplicateCount: skipped }
+  return { messageCount: stats.messageCount, memberCount: stats.memberCount, duplicateCount: stats.skippedCount }
 }
 
 /**
