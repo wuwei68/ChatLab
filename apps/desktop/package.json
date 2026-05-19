@@ -1,6 +1,7 @@
 {
   "name": "@openchatlab/desktop",
   "version": "0.19.0",
+  "productName": "ChatLab",
   "private": true,
   "description": "ChatLab Desktop — Electron 桌面客户端",
   "main": "./out/main/index.js",

@@ -12,6 +12,7 @@ import {
   cleanupPendingDeleteDir,
   needsUnifiedDirMigration,
   migrateToUnifiedDirs,
+  verifyDataPath,
   getSystemDataDir,
   getAiDataDir,
 } from './paths'
@@ -95,6 +96,9 @@ class MainProcess {
       // 执行统一目录结构迁移（Electron 旧布局 → 双根目录）
       this.migrateToUnifiedDirsIfNeeded()
     }
+
+    // 验证数据路径是否正确（安全网：防止 config.toml 指向空目录）
+    verifyDataPath()
 
     // 确保应用目录存在
     ensureAppDirs()

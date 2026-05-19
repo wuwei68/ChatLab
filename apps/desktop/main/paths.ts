@@ -720,3 +720,33 @@ export function migrateToUnifiedDirs(): { success: boolean; error?: string } {
     return { success: false, error: errorMsg }
   }
 }
+
+/**
+ * Verify that the configured user_data_dir actually has database files.
+ * If the configured dir is empty but the old Electron path has databases,
+ * auto-correct config.toml to point to the old path.
+ *
+ * This acts as a safety net in case migration was skipped or config was overwritten.
+ */
+export function verifyDataPath(): void {
+  const currentDir = getUserDataDir()
+  const currentDbDir = path.join(currentDir, 'databases')
+  const hasCurrentDbs = fs.existsSync(currentDbDir) && fs.readdirSync(currentDbDir).some((f) => f.endsWith('.db'))
+
+  if (hasCurrentDbs) return
+
+  const oldDir = getElectronLegacyDataDir()
+  if (path.resolve(currentDir) === path.resolve(oldDir)) return
+
+  const oldDbDir = path.join(oldDir, 'databases')
+  if (!fs.existsSync(oldDbDir)) return
+
+  const hasOldDbs = fs.readdirSync(oldDbDir).some((f) => f.endsWith('.db'))
+  if (!hasOldDbs) return
+
+  console.warn(
+    `[Paths] Data path mismatch: configured dir ${currentDir} has no databases, but old path ${oldDir} does. Auto-correcting config.toml.`
+  )
+  writeConfigField('data', 'user_data_dir', oldDir)
+  _userDataDir = oldDir
+}
