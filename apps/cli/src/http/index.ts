@@ -13,7 +13,7 @@ import { loadConfig, writeConfigField, MigrationRunner, ALL_MIGRATIONS } from '@
 import type { ChatLabConfig } from '@openchatlab/config'
 import { NodePathProvider, DatabaseManager, AIConversationManager } from '@openchatlab/node-runtime'
 import { createServer } from './server'
-import { setAuthToken } from './auth'
+import { setAuthToken, setWebMode } from './auth'
 import { registerSystemRoutes } from './routes/system'
 import { registerSessionRoutes } from './routes/sessions'
 import { registerWebRoutes } from './routes/web'
@@ -107,8 +107,8 @@ export async function startHttpServer(options?: HttpServerOptions): Promise<{
 
   initSync(server, dbManager, pathProvider, { port, host, token })
 
-  // 托管 Web SPA 静态资源
   if (options?.webRoot && fs.existsSync(options.webRoot)) {
+    setWebMode(true)
     const fastifyStatic = await import('@fastify/static')
     await server.register(fastifyStatic.default, {
       root: options.webRoot,
@@ -145,6 +145,7 @@ export async function stopHttpServer(): Promise<void> {
       dbManager = null
     }
     closeServerAiLogger()
+    setWebMode(false)
     server = null
   }
 }

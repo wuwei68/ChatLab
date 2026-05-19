@@ -9,12 +9,21 @@ import { timingSafeEqual } from 'crypto'
 import { unauthorized, errorResponse } from './errors'
 
 let cachedToken: string | null = null
+let webModeEnabled = false
 
 /**
  * 设置 auth hook 使用的 token（由 server 启动时注入）
  */
 export function setAuthToken(token: string): void {
   cachedToken = token
+}
+
+/**
+ * Enable web mode: static resources and SPA paths bypass auth.
+ * Only `/api/` routes remain protected.
+ */
+export function setWebMode(enabled: boolean): void {
+  webModeEnabled = enabled
 }
 
 function safeTokenCompare(a: string, b: string): boolean {
@@ -27,8 +36,11 @@ function safeTokenCompare(a: string, b: string): boolean {
 export async function authHook(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!cachedToken) return
 
-  // /_web/ 内部 API 不需要认证（仅限同源 Web UI 使用）
+  // /_web/ internal API: no auth required (same-origin Web UI only)
   if (request.url.startsWith('/_web/')) return
+
+  // Web mode: only /api/ routes require auth; static files and SPA are public
+  if (webModeEnabled && !request.url.startsWith('/api/')) return
 
   const authHeader = request.headers.authorization
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

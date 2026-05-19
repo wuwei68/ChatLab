@@ -7,6 +7,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { execSync } from 'child_process'
 import { Command } from 'commander'
 import { loadConfig, getConfigPath } from '@openchatlab/config'
 import { NodePathProvider, DatabaseManager } from '@openchatlab/node-runtime'
@@ -342,6 +343,59 @@ program
     }
   })
 
+// chatlab web - 一键启动 Web UI
+program
+  .command('web')
+  .description('一键启动 Web UI（含 HTTP API 后端 + 自动打开浏览器）')
+  .option('--port <port>', '服务端口', '3110')
+  .option('--host <host>', '监听地址', '127.0.0.1')
+  .option('--no-open', '不自动打开浏览器')
+  .action(async (options) => {
+    const { startHttpServer } = await import('./http')
+    const port = parseInt(options.port, 10)
+    const webDir = path.resolve(__dirname, '../dist-web')
+    let webRoot: string | undefined
+
+    if (fs.existsSync(webDir)) {
+      webRoot = webDir
+    } else {
+      console.warn('Warning: dist-web/ not found, Web UI will not be available (API-only mode)')
+    }
+
+    try {
+      const info = await startHttpServer({ port, host: options.host, webRoot })
+      const url = `http://${info.host === '0.0.0.0' ? '127.0.0.1' : info.host}:${info.port}`
+
+      console.log(`\nChatLab v${getVersion()}`)
+      console.log(`  Web UI: ${url}`)
+      console.log(`  Token:  ${info.token}`)
+
+      if (options.open && webRoot) {
+        openBrowser(url)
+        console.log(`\nBrowser opened. Press Ctrl+C to stop.`)
+      } else {
+        console.log(`\nPress Ctrl+C to stop.`)
+      }
+
+      const shutdown = async () => {
+        console.log('\nShutting down...')
+        const { stopHttpServer } = await import('./http')
+        await stopHttpServer()
+        process.exit(0)
+      }
+      process.on('SIGINT', shutdown)
+      process.on('SIGTERM', shutdown)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('EADDRINUSE')) {
+        console.error(`Error: port ${port} is already in use`)
+      } else {
+        console.error(`Startup failed: ${message}`)
+      }
+      process.exit(1)
+    }
+  })
+
 // chatlab config - 配置管理
 const configCmd = program.command('config').description('配置管理')
 
@@ -361,6 +415,20 @@ configCmd
   })
 
 // --- 工具函数 ---
+
+function openBrowser(url: string): void {
+  try {
+    const cmd =
+      process.platform === 'darwin'
+        ? `open "${url}"`
+        : process.platform === 'win32'
+          ? `start "" "${url}"`
+          : `xdg-open "${url}"`
+    execSync(cmd, { stdio: 'ignore' })
+  } catch {
+    console.log(`  Open manually: ${url}`)
+  }
+}
 
 /**
  * 查找独立编译的 better-sqlite3 原生模块路径。

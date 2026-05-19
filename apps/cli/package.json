@@ -41,6 +41,8 @@
   "scripts": {
     "cli": "node scripts/ensure-native.mjs && tsx src/cli.ts",
     "build": "tsup",
+    "build:full": "pnpm -w run build:web && pnpm run build && pnpm run prepare:web",
+    "prepare:web": "rm -rf dist-web && cp -r ../../dist-web dist-web",
     "ensure-native": "node scripts/ensure-native.mjs",
     "rebuild-native": "bash scripts/rebuild-native.sh",
     "rebuild-sqlite": "npm rebuild better-sqlite3",
