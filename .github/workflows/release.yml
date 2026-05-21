@@ -20,9 +20,52 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  prepare_release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      version_tag: ${{ steps.meta.outputs.version_tag }}
+      npm_tag: ${{ steps.meta.outputs.npm_tag }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+    steps:
+      - name: Determine release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          fi
+
+          VERSION_TAG="v${VERSION}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" =~ -(beta|alpha|rc)(\.|$) ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$VERSION" =~ -beta(\.|$) ]]; then
+            echo "npm_tag=beta" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ -alpha(\.|$) ]]; then
+            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ -rc(\.|$) ]]; then
+            echo "npm_tag=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Release version: $VERSION_TAG"
+
   # macOS 构建需要分架构
   # better-sqlite3 等原生模块会通过 prebuild 下载对应架构的预编译二进制
   build-mac:
+    needs: [prepare_release]
     strategy:
       matrix:
         include:
@@ -60,17 +103,12 @@ jobs:
       - name: Install dependencies
         run: |
           echo "node-linker=hoisted" >> .npmrc
-          pnpm install
+          pnpm install --frozen-lockfile
 
       - name: Inject version into app package.json
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${{ github.ref_name }}"
-            VERSION="${VERSION#v}"
-          fi
+          VERSION="${{ needs.prepare_release.outputs.version }}"
           echo "Injecting version: $VERSION"
           node -e "
             const fs = require('fs');
@@ -127,6 +165,7 @@ jobs:
           retention-days: 1 # 只保留1天，Release后会上传到GitHub Releases
 
   build-win:
+    needs: [prepare_release]
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -157,17 +196,12 @@ jobs:
       - name: Install dependencies
         run: |
           echo "node-linker=hoisted" >> .npmrc
-          pnpm install
+          pnpm install --frozen-lockfile
 
       - name: Inject version into app package.json
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${{ github.ref_name }}"
-            VERSION="${VERSION#v}"
-          fi
+          VERSION="${{ needs.prepare_release.outputs.version }}"
           echo "Injecting version: $VERSION"
           node -e "
             const fs = require('fs');
@@ -209,8 +243,64 @@ jobs:
           if-no-files-found: warn
           retention-days: 1 # 只保留1天，Release后会上传到GitHub Releases
 
+  build-cli:
+    needs: [prepare_release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: |
+          echo "node-linker=hoisted" >> .npmrc
+          pnpm install --frozen-lockfile
+
+      - name: Inject CLI version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('apps/cli/package.json', 'utf-8'));
+            pkg.version = '${{ needs.prepare_release.outputs.version }}';
+            fs.writeFileSync('apps/cli/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Build CLI (with Web UI)
+        run: pnpm --filter chatlab-cli run build:full
+
+      - name: Upload CLI build output
+        uses: actions/upload-artifact@v6
+        with:
+          name: ChatLab-cli-build
+          path: |
+            apps/cli/dist
+            apps/cli/dist-web
+          if-no-files-found: error
+          retention-days: 1
+
   release:
-    needs: [build-mac, build-win]
+    needs: [prepare_release, build-mac, build-win, build-cli]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
@@ -242,19 +332,14 @@ jobs:
       - name: Generate Release Notes
         id: release_notes
         run: |
-          # 获取当前版本号
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            CURRENT_VERSION="v${{ inputs.version }}"
-          else
-            CURRENT_VERSION="${{ github.ref_name }}"
-          fi
-          VERSION_NUMBER="${CURRENT_VERSION#v}"
+          CURRENT_VERSION="${{ needs.prepare_release.outputs.version_tag }}"
+          VERSION_NUMBER="${{ needs.prepare_release.outputs.version }}"
 
           echo "Current version: $CURRENT_VERSION"
 
-          # 从 changelog JSON 中提取最新版本的 summary
-          EN_SUMMARY=$(jq -r '.[0].summary' docs/public/changelogs/en.json 2>/dev/null || echo "See changelog for details")
-          CN_SUMMARY=$(jq -r '.[0].summary' docs/public/changelogs/cn.json 2>/dev/null || echo "详见更新日志")
+          # 按当前版本号从 changelog JSON 中提取 summary，避免补发旧版本时误用第一条日志。
+          EN_SUMMARY=$(jq -r --arg version "$VERSION_NUMBER" 'map(select(.version == $version))[0].summary // "See changelog for details"' docs/public/changelogs/en.json 2>/dev/null || echo "See changelog for details")
+          CN_SUMMARY=$(jq -r --arg version "$VERSION_NUMBER" 'map(select(.version == $version))[0].summary // "详见更新日志"' docs/public/changelogs/cn.json 2>/dev/null || echo "详见更新日志")
 
           echo "EN summary: $EN_SUMMARY"
           echo "CN summary: $CN_SUMMARY"
@@ -290,8 +375,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
-          name: ChatLab ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          tag_name: ${{ needs.prepare_release.outputs.version_tag }}
+          name: ChatLab ${{ needs.prepare_release.outputs.version }}
           body_path: release_notes.md
           files: |
             release-dist/*.exe
@@ -304,28 +389,14 @@ jobs:
 
       # 同步到 Cloudflare R2（国内镜像）
       # 注意：beta/alpha/rc 等预发布版本不上传到 R2
-      - name: Get version for R2 upload
-        id: version
+      - name: Print R2 upload metadata
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION_TAG="v${{ inputs.version }}"
-          else
-            VERSION_TAG="${{ github.ref_name }}"
-          fi
-          echo "tag=$VERSION_TAG" >> $GITHUB_OUTPUT
-
-          # 检查是否为预发布版本（包含 -beta、-alpha、-rc 等）
-          if [[ "$VERSION_TAG" =~ -(beta|alpha|rc)\. ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            echo "Detected prerelease version: $VERSION_TAG, will skip R2 upload"
-          else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            echo "Detected stable version: $VERSION_TAG, will upload to R2"
-          fi
+          echo "Release tag: ${{ needs.prepare_release.outputs.version_tag }}"
+          echo "Prerelease: ${{ needs.prepare_release.outputs.is_prerelease }}"
 
       # 上传所有文件到版本目录
       - name: Upload to Cloudflare R2 (version directory)
-        if: steps.version.outputs.is_prerelease == 'false'
+        if: needs.prepare_release.outputs.is_prerelease == 'false'
         uses: ryand56/r2-upload-action@latest
         with:
           r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
@@ -333,15 +404,15 @@ jobs:
           r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           r2-bucket: ${{ secrets.R2_BUCKET_NAME }}
           source-dir: release-dist
-          destination-dir: releases/download/${{ steps.version.outputs.tag }}
+          destination-dir: releases/download/${{ needs.prepare_release.outputs.version_tag }}
 
       # 准备 yml 文件用于根目录上传
       # 需要修改 yml 中的 path/url 为包含版本号的完整路径
       - name: Prepare yml files for root upload
-        if: steps.version.outputs.is_prerelease == 'false'
+        if: needs.prepare_release.outputs.is_prerelease == 'false'
         run: |
           mkdir -p dist-yml
-          VERSION_TAG="${{ steps.version.outputs.tag }}"
+          VERSION_TAG="${{ needs.prepare_release.outputs.version_tag }}"
 
           # 处理所有 yml 文件
           for yml_file in release-dist/*.yml; do
@@ -363,7 +434,7 @@ jobs:
 
       # 上传 yml 文件到根目录（覆盖旧版本，electron-updater 从这里检测更新）
       - name: Upload yml files to Cloudflare R2 (root directory)
-        if: steps.version.outputs.is_prerelease == 'false'
+        if: needs.prepare_release.outputs.is_prerelease == 'false'
         uses: ryand56/r2-upload-action@latest
         with:
           r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
@@ -374,7 +445,7 @@ jobs:
           destination-dir: releases/download
 
   publish-cli:
-    needs: [release]
+    needs: [prepare_release, build-cli]
     runs-on: ubuntu-latest
 
     # 必须显式声明 id-token 写入权限，用于 OIDC 与 npm 握手交换临时 Token
@@ -390,52 +461,27 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Install dependencies
-        run: |
-          echo "node-linker=hoisted" >> .npmrc
-          pnpm install
-
-      - name: Determine version and npm tag
-        id: npm_meta
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="${{ github.ref_name }}"
-            VERSION="${VERSION#v}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-          if [[ "$VERSION" =~ -beta\. ]]; then
-            echo "tag=beta" >> $GITHUB_OUTPUT
-          elif [[ "$VERSION" =~ -alpha\. ]]; then
-            echo "tag=alpha" >> $GITHUB_OUTPUT
-          elif [[ "$VERSION" =~ -rc\. ]]; then
-            echo "tag=rc" >> $GITHUB_OUTPUT
-          else
-            echo "tag=latest" >> $GITHUB_OUTPUT
-          fi
-
-          echo "Publishing chatlab-cli@$VERSION with tag $(grep tag <<< "$(cat $GITHUB_OUTPUT)" | tail -1 | cut -d= -f2)"
-
-      - name: Inject version
+      - name: Inject CLI version
         run: |
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('apps/cli/package.json', 'utf-8'));
-            pkg.version = '${{ steps.npm_meta.outputs.version }}';
+            pkg.version = '${{ needs.prepare_release.outputs.version }}';
             fs.writeFileSync('apps/cli/package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
-      - name: Build CLI (with Web UI)
-        run: pnpm --filter chatlab-cli run build:full
+      - name: Download CLI build output
+        uses: actions/download-artifact@v8
+        with:
+          name: ChatLab-cli-build
+          path: apps/cli
+
+      - name: Copy README for npm publish
+        run: cp README.md apps/cli/README.md
 
       - name: Publish to npm
         working-directory: apps/cli
-        run: npm publish --tag ${{ steps.npm_meta.outputs.tag }} --provenance
+        run: npm publish --ignore-scripts --provenance --tag ${{ needs.prepare_release.outputs.npm_tag }}
