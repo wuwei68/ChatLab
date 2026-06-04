@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.24.1 (2026-06-04)
+
+> Adds in-app update notices and default AI preprocessing rules, with fixes for update badges and desensitization settings.
+
+### ✨ Features
+
+- Add an in-app update notice entry so the sidebar can surface the latest release details
+- Add default AI preprocessing settings for data cleaning, denoising, and desensitization
+- Support grouped AI desensitization rules to make built-in and custom rules easier to manage
+
+### 🐛 Bug Fixes
+
+- Fix incorrect New badges caused by failed update checks, stale update caches, and CLI Web development placeholder versions
+- Fix built-in desensitization rules not being applied before AI preprocessing runs
+- Fix empty desensitization preference overrides not clearing previously saved built-in rule switches
+- Fix legacy built-in desensitization rule overrides being lost during migration
+
+### 📝 Documentation
+
+- Add a public development guide covering local setup, directory responsibilities, and collaboration conventions
+
+### 👷 CI
+
+- Add Markdown changelog links to the release workflow
+
 ## v0.24.0 (2026-06-03)
 
 > Adds CLI Web authentication and data directory migration, unifies cross-platform HTTP routes, and fixes data migration, AI settings, and import refresh issues.
