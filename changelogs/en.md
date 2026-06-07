@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.25.0 (2026-06-07)
+
+> AI chat can now generate charts through skills, with fixes for tool rounds, the desktop title bar, and the development service lifecycle.
+
+### ✨ Features
+
+- Add a slash-activated AI chart runtime that can generate and render ECharts charts in conversations
+- Improve the AI chart result experience with clearer rendering states and support for more chart types
+
+### 🐛 Bug Fixes
+
+- Increase the default AI Agent tool round limit to reduce early stops in complex tasks
+- Fix preset question chips and sidebar elements stacking incorrectly
+- CLI Web: Fix incomplete cleanup of the development backend lifecycle
+- Desktop: Register the chart tool for automatic skills so chart skills can run correctly
+- Desktop: Refresh the Windows title bar overlay cache after theme changes and smooth its display
+
+### ♻️ Refactoring
+
+- Centralize the AI chart runtime policy and unify chart tool enablement across CLI and desktop
+- Deduplicate skill menu and Skill Manager logic
+
+### 📝 Documentation
+
+- Update the iMessage chat export guide
+
+### 🔧 Chores
+
+- Move maintainer-only skills out of the public repository into private maintenance context
+
 ## v0.24.1 (2026-06-04)
 
 > Adds in-app update notices and default AI preprocessing rules, with fixes for update badges and desensitization settings.
